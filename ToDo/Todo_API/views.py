@@ -1,114 +1,68 @@
-from rest_framework import mixins, generics, response
-from rest_framework.decorators import api_view
-from .models import ToDos,UserToDo
-from rest_framework.permissions import IsAuthenticated
+from rest_framework import generics, response, status
+from rest_framework.decorators import api_view, permission_classes
+from .models import ToDos, UserToDo
 from .serializers import RegistrationUserSerializer, ToDoSerializer
-from django.contrib.auth import authenticate
-from django.contrib.auth.hashers import make_password
-from django.shortcuts import get_object_or_404
-from rest_framework.pagination import PageNumberPagination
-# from rest_framework_simplejwt.views import (
-#     TokenObtainPairView,
-#     TokenRefreshView,
-# )
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.tokens import RefreshToken
 
-# class ToDo(mixins.ListModelMixin,
-# mixins.RetrieveModelMixin, 
-# mixins.DestroyModelMixin,
-# mixins.CreateModelMixin,
-# mixins.UpdateModelMixin,
-# generics.GenericAPIView
 
-# ):
-#     serializer_class = ""
-#     queryset = ""
-#     def get(self, request, id=None):
-#         if id:
-#             return self.get(request, id)
-#         return list(request)
-
-#     def delete(self, request, id):
-#         return self.destroy(request, id)
-
-#     def put(self, request, id):
-#         return self.update(request, id)
-#     def patch(self, request, id):
-#         return self.partial_update(request, id)
-        
-class CustomPageNumberPagination(PageNumberPagination):
-    page_size_query_param = 'limit'
-
-class CreateToDo(generics.ListCreateAPIView):
-    
+class ListCreateToDo(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
-    
     serializer_class = ToDoSerializer
-    queryset = ToDos.objects.all()
-    def create(self, request,*args, **kwargs):
-        usr = request.user
-     
-        user_todo = get_object_or_404(UserToDo, email=usr)
-        request.data['UserToDo'] = user_todo.id  
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        response_data = serializer.data
-        response_data.pop("UserToDo", None)
-        headers = self.get_success_headers(serializer.data)
-        return response.Response(response_data, status=201, headers=headers)
-    def list(self, request,*args, **kwargs):
 
-        # permission_classes = [IsAuthenticated]
-        todos = ToDos.objects.all()
-        paginator = CustomPageNumberPagination()
-        result_page = paginator.paginate_queryset(todos, request)
-        print(f"result page {result_page}")
-        serializer = ToDoSerializer(result_page, many=True)
-        return paginator.get_paginated_response(serializer.data)
+    def get_queryset(self):
+        return ToDos.objects.filter(usertodo=self.request.user)
 
+    def perform_create(self, serializer):
+        serializer.save(usertodo=self.request.user)
 
 class RegisterUser(generics.CreateAPIView):
+    permission_classes = [AllowAny]
     serializer_class = RegistrationUserSerializer
     queryset = UserToDo.objects.all()
-
-    def create(self,request, *args, **kwargs):
-        data = request.data
-        
-        serializer = self.get_serializer(data=data)
-        if serializer.is_valid():
-            serializer.save()
-            return  response.Response({"mssg":"registration success"})
-
-        return response.Response({"mssg:User exists"}, status=400)
 class GetToDos(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = ToDoSerializer
-    queryset = ToDos.objects.all()
 
+    def get_queryset(self):
+        return ToDos.objects.filter(usertodo=self.request.user)
 
+class ListTodos(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ToDoSerializer
 
+    def get_queryset(self):
+        return ToDos.objects.filter(usertodo=self.request.user)
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def LoginUser(request):
-    data = request.data
-    print(f"data {data}")
-    email = data['email']
-    password = data['password']
-
-    user = authenticate(request, email=email, password=password)
-
-    if user:
-        refresh = RefreshToken.for_user(user)
-        access_token = str(refresh.access_token)
-
-        return response.Response({
-            "message": "Login successful",
-            "access_token": access_token,
-            "refresh_token": str(refresh)
-        })
+    email = request.data.get('email')
+    password = request.data.get('password')
     
-    return response.Response({"error": "Invalid credentials"}, status=401)
-# @api_view(['GET'])
-# def todos_list(request):
+    if not email or not password:
+        return response.Response(
+            {"error": "Both email and password are required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
+    try:
+        user = UserToDo.objects.get(email=email)
+        if user.check_password(password):
+            refresh = RefreshToken.for_user(user)
+            return response.Response({
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user_id": user.id,
+                "email": user.email
+            })
+        return response.Response(
+            {"error": "Invalid credentials"},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+    except UserToDo.DoesNotExist:
+        return response.Response(
+            {"error": "User not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
