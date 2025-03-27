@@ -71,17 +71,6 @@ Authorization: Bearer <JWT_ACCESS_TOKEN>
 }
 ```
 
-### Update a To-Do (Full Update - PUT)
-**Endpoint:** `PUT /todos/{id}/`
-- **Authentication required**: Yes
-```json
-{
-  "title": "Updated Task",
-  "description": "Updated description",
-  "done": true
-}
-```
-
 ### Delete a To-Do
 **Endpoint:** `DELETE /todos/{id}/`
 - **Authentication required**: Yes
