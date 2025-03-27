@@ -53,9 +53,7 @@ def LoginUser(request):
             refresh = RefreshToken.for_user(user)
             return response.Response({
                 "access": str(refresh.access_token),
-                "refresh": str(refresh),
-                "user_id": user.id,
-                "email": user.email
+                "refresh": str(refresh)
             })
         return response.Response(
             {"error": "Invalid credentials"},
